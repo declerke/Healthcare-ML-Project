@@ -1,8 +1,3 @@
-"""
-ingest.py — Download the Kaggle healthcare dataset and copy the raw CSV
-into data/ so subsequent scripts can find it at a stable path.
-"""
-
 import os
 import shutil
 from pathlib import Path

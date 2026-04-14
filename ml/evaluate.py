@@ -1,8 +1,3 @@
-"""
-evaluate.py — Model evaluation utilities.
-Returns a metrics dict; also prints the full classification report.
-"""
-
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,

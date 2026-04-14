@@ -1,7 +1,3 @@
-"""
-schemas.py — Pydantic request / response models for the prediction API.
-"""
-
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field
 

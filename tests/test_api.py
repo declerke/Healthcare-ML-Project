@@ -1,8 +1,3 @@
-"""
-test_api.py — Integration tests for all FastAPI endpoints.
-Uses httpx TestClient with lifespan; no external services required.
-"""
-
 import sys
 from pathlib import Path
 

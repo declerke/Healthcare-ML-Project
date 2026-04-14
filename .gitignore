@@ -1,4 +1,3 @@
-# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -9,25 +8,19 @@ dist/
 build/
 .eggs/
 
-# Virtual environment
 .venv/
 venv/
 env/
 
-# Environment variables
 .env
 
-# Data — raw downloads (too large; cleaned CSV is committed for retraining)
 data/raw/
 
-# Jupyter checkpoints
 .ipynb_checkpoints/
 
-# OS
 .DS_Store
 Thumbs.db
 
-# IDE
 .vscode/
 .idea/
 

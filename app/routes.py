@@ -1,13 +1,3 @@
-"""
-routes.py — API endpoint definitions.
-
-Endpoints:
-  GET  /           → Serves frontend/index.html
-  GET  /health     → Liveness check + model status
-  POST /predict    → Run inference on patient data
-  POST /retrain    → Trigger model retraining (protected by API key)
-"""
-
 import os
 import sys
 from pathlib import Path

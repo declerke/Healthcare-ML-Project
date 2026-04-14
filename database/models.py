@@ -1,7 +1,3 @@
-"""
-models.py — SQLAlchemy ORM table definitions matching queries.sql.
-"""
-
 from datetime import date, datetime
 from sqlalchemy import Boolean, Column, Date, Float, Integer, Numeric, String, DateTime
 from database.db_connection import Base
