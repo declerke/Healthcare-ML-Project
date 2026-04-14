@@ -1,8 +1,3 @@
-"""
-db_connection.py — SQLAlchemy engine and session factory.
-Reads DATABASE_URL from environment; falls back to local Docker default.
-"""
-
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
