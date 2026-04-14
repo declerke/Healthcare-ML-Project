@@ -2,14 +2,14 @@ name: Weekly Model Retraining
 
 on:
   schedule:
-    - cron: "0 12 * * 6"   # Every Saturday at 12:00 UTC
-  workflow_dispatch:         # Allow manual trigger from GitHub Actions UI
+    - cron: "0 12 * * 6"
+  workflow_dispatch:
 
 jobs:
   retrain:
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # Needed to commit the updated model artifact
+      contents: write
 
     steps:
       - name: Checkout repository
