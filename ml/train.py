@@ -1,13 +1,3 @@
-"""
-train.py — Train a RandomForestClassifier on cleaned_healthcare.csv,
-save model.joblib and encoders.joblib, and log the result to model_versions.
-
-Invoked by:
-  - Initial setup:   python ml/train.py
-  - GitHub Actions:  python ml/train.py  (every Saturday 12:00 UTC)
-  - API endpoint:    POST /retrain  (triggers this module directly)
-"""
-
 import os
 import sys
 from datetime import datetime
