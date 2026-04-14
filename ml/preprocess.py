@@ -1,17 +1,3 @@
-"""
-preprocess.py — Feature engineering and encoding for training and inference.
-
-ML features used (8 total):
-  Numeric  : age, billing_amount
-  Categorical: gender, blood_type, medical_condition,
-               insurance_provider, admission_type, medication
-
-Target: test_results  (Normal / Abnormal / Inconclusive)
-
-Encoders are saved alongside the model so inference always uses
-the same vocabulary as training.
-"""
-
 from pathlib import Path
 from typing import Tuple
 
@@ -94,7 +80,6 @@ def encode_features(
 
 
 def encode_single_row(row: dict, label_encoders: dict, scaler: StandardScaler) -> np.ndarray:
-    """Encode a single inference payload dict → 1-row numpy array."""
     df = pd.DataFrame([row])
     df.columns = [c.lower().replace(" ", "_") for c in df.columns]
 
