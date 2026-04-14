@@ -1,8 +1,3 @@
-"""
-test_model.py — Unit tests for preprocessing and inference logic.
-Runs without a database or live API; only requires model artifacts.
-"""
-
 import sys
 from pathlib import Path
 
