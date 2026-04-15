@@ -3,7 +3,7 @@ services:
     name: healthcare-ml-api
     runtime: python
     buildCommand: pip install uv && uv pip install -r requirements.txt --system
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         fromDatabase:
