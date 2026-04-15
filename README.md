@@ -112,6 +112,9 @@ The live Swagger UI is available at `/docs` on the deployed instance. Key endpoi
 - **Absolute path resolution in model_loader:** `Path(__file__).resolve().parents[1]` anchors all file paths to the repo root regardless of the working directory at runtime — eliminates relative-path failures in test environments and deployed containers
 - **Dual-layer scheduling (GitHub Actions + Airflow 3):** GitHub Actions handles the cloud retraining loop (persistent runner → commit model → Render redeploy), while Airflow 3 provides local orchestration with a visual DAG graph, per-task logs, retry policies, and a manual trigger button. The two layers share the identical cron expression (`0 12 * * 6`) and call the same `ml/train.py` logic — demonstrating that the training code is environment-agnostic
 - **Airflow `LocalExecutor` with dedicated metadata DB:** Using `LocalExecutor` (vs `CeleryExecutor`) avoids Redis and Celery dependencies for a single-node demo while preserving the full Airflow 3 feature set. A separate `airflow_db` Postgres instance keeps Airflow metadata cleanly isolated from the healthcare application database
+- **Airflow 3 multi-container networking fixes (three required settings):** Running Airflow 3 across separate Docker containers requires three explicit configurations that default to localhost-only values: (1) `AIRFLOW__CORE__EXECUTION_API_SERVER_URL` must point to the api-server's Docker service name instead of `localhost:8080`, or every task fails with `Connection refused`; (2) `AIRFLOW__API_AUTH__JWT_SECRET` must be identical across all containers — the scheduler signs task JWTs and the api-server verifies them, so a mismatch produces `Signature verification failed` on every task; (3) `api-server --workers 1` prevents uvicorn's multi-process spawn from generating per-worker JWT keys that diverge from the parent, causing a worker crash loop at 600%+ CPU
+- **Airflow 3 `airflow.sdk` imports for DAG files:** Airflow 3 moved the `@dag` / `@task` decorators to `airflow.sdk`; importing from the legacy `airflow.decorators` path still works but incurs an additional module-resolution hop that, combined with the execution API connectivity issues above, can cause the dag-processor to timeout and kill the parser process. Using `from airflow.sdk import dag, task` is both the documented path and the more robust choice in multi-container deployments
+- **SimpleAuthManager password file via bind mount:** Airflow 3 defaults to `SimpleAuthManager` (not FAB). User passwords are stored as plain text in `$AIRFLOW_HOME/simple_auth_manager_passwords.json`. Since each container has its own `AIRFLOW_HOME`, the file is written to the project bind mount (`/opt/airflow/project/`) during `airflow-init` so all containers share the same credentials file without an extra named volume
 
 ---
 
@@ -160,7 +163,7 @@ healthcare-ml-project/
 │   └── test_model.py             # 9 preprocessing + inference unit tests
 ├── dags/
 │   └── retrain_dag.py            # Airflow 3 retraining DAG (3-task TaskFlow pipeline)
-├── docker-compose.yml            # PostgreSQL + Apache Airflow 3 (webserver + scheduler)
+├── docker-compose.yml            # PostgreSQL + Apache Airflow 3 (api-server + scheduler + dag-processor + triggerer)
 ├── Procfile                      # Render start command
 ├── render.yaml                   # Render service + database IaC
 ├── runtime.txt                   # Pins Python 3.11.9 for Render build
@@ -246,23 +249,25 @@ healthcare-ml-project/
 
 ### Apache Airflow 3 (Local Orchestration)
 
-Run the full stack — including the Airflow webserver and scheduler — with a single command:
+Run the full stack — including the Airflow 3 API server, scheduler, DAG processor, and triggerer — with a single command:
 
 ```bash
 docker-compose up -d
 ```
 
-This starts five containers:
+This starts seven containers:
 
-| Container              | Role                                              | Port  |
-|------------------------|---------------------------------------------------|-------|
-| `healthcare_db`        | Application PostgreSQL (patients, predictions)    | 5432  |
-| `airflow_db`           | Airflow metadata PostgreSQL                       | 5433  |
-| `airflow_init`         | One-shot: `airflow db migrate` + admin user       | —     |
-| `airflow_webserver`    | Airflow 3 UI                                      | 8080  |
-| `airflow_scheduler`    | Parses DAGs and triggers scheduled runs           | —     |
+| Container                | Role                                                        | Port  |
+|--------------------------|-------------------------------------------------------------|-------|
+| `healthcare_db`          | Application PostgreSQL (patients, predictions)              | 5434  |
+| `airflow_db`             | Airflow metadata PostgreSQL (isolated)                      | 5433  |
+| `airflow_init`           | One-shot: DB migrate + SimpleAuthManager passwords file     | —     |
+| `airflow_api_server`     | Airflow 3 React UI + REST API (`api-server --workers 1`)    | 8080  |
+| `airflow_scheduler`      | Schedules task instances via LocalExecutor                  | —     |
+| `airflow_dag_processor`  | Parses DAG files (mandatory separate service in Airflow 3)  | —     |
+| `airflow_triggerer`      | Handles deferrable operators                                | —     |
 
-Once all containers are healthy (allow ~2 minutes for `_PIP_ADDITIONAL_REQUIREMENTS` install):
+Once all containers are healthy (allow ~2–3 minutes for `scikit-learn==1.5.2` install on first start):
 
 1. Open **http://localhost:8080** — login with `admin` / `admin`
 2. Navigate to **DAGs → healthcare_retrain**

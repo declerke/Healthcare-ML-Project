@@ -20,7 +20,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from airflow.decorators import dag, task
+from airflow.sdk import dag, task
 
 # ---------------------------------------------------------------------------
 # Project root resolution

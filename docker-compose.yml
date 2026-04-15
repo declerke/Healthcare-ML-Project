@@ -1,43 +1,47 @@
 version: "3.9"
 
 # =============================================================================
-# Airflow common configuration (shared by webserver + scheduler via YAML anchor)
+# Apache Airflow 3 — shared config applied to all Airflow services via anchor
 # =============================================================================
 x-airflow-common:
   &airflow-common
   image: apache/airflow:3.0.0
   environment:
     &airflow-common-env
-    # Core
+    # ── Executor & metadata DB ────────────────────────────────────────────────
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+    # ── Core ─────────────────────────────────────────────────────────────────
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
-    # Fernet key encrypts connection passwords stored in the metadata DB.
-    # Generate a real key for production: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     AIRFLOW__CORE__FERNET_KEY: ""
-    # Metadata database (separate from the healthcare app DB)
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
-    # Webserver
+    # ── API server (Airflow 3 replaces webserver) ─────────────────────────────
     AIRFLOW__WEBSERVER__SECRET_KEY: "healthcare_demo_secret_change_in_prod"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
-    # Project root inside the container (used by retrain_dag.py)
+    # ── Project root inside containers ────────────────────────────────────────
     AIRFLOW_PROJECT_ROOT: /opt/airflow/project
-    # Healthcare app database — used by ml/train.py when log_to_db=True
+    # ── Execution API URL — must use Docker service name, not localhost ───────
+    #    Defaults to http://localhost:8080/execution/ which fails in multi-
+    #    container Docker because each container has its own network namespace.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-api-server:8080/execution/"
+    # ── Shared JWT signing key for task execution tokens ─────────────────────
+    #    Scheduler signs task JWTs; api-server verifies them.  Both must use
+    #    the same key or every task fails with "Signature verification failed".
+    AIRFLOW__API_AUTH__JWT_SECRET: "healthcare_demo_jwt_secret_change_in_prod"
+    # ── Healthcare app DB used by ml/train.py (log_to_db=True) ───────────────
     DATABASE_URL: postgresql://postgres:password@db/healthcare_db
-    # Additional Python packages installed on container start.
-    # NOTE: this is convenient for dev/demo; build a custom image for production.
-    _PIP_ADDITIONAL_REQUIREMENTS: >-
-      scikit-learn==1.5.2
-      pandas==2.1.4
-      numpy==1.26.4
-      joblib==1.4.2
-      python-dotenv==1.0.1
-      psycopg2-binary==2.9.10
-      sqlalchemy==2.0.36
+    # ── SimpleAuthManager user + passwords (Airflow 3 default auth manager) ────
+    #    Passwords stored as plain text in a shared bind-mounted file so all
+    #    containers see the same credentials.  Login: admin / admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:Admin"
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: "/opt/airflow/project/simple_auth_manager_passwords.json"
+    # ── scikit-learn only — sqlalchemy & psycopg2 already in the base image.
+    #    Airflow 3 requires sqlalchemy<2.0; forcing 2.x breaks the whole stack.
+    _PIP_ADDITIONAL_REQUIREMENTS: scikit-learn==1.5.2
   volumes:
-    - ./dags:/opt/airflow/dags          # DAG files
-    - .:/opt/airflow/project            # Full project (ml/, data/, models/, etc.)
-    - airflow_logs:/opt/airflow/logs    # Task logs
+    - ./dags:/opt/airflow/dags
+    - .:/opt/airflow/project
+    - airflow_logs:/opt/airflow/logs
   depends_on:
     airflow-db:
       condition: service_healthy
@@ -46,9 +50,7 @@ x-airflow-common:
 services:
 # =============================================================================
 
-  # ---------------------------------------------------------------------------
-  # Healthcare application database
-  # ---------------------------------------------------------------------------
+  # ── Healthcare application database ──────────────────────────────────────────
   db:
     image: postgres:15-alpine
     container_name: healthcare_db
@@ -57,7 +59,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "5434:5432"   # host 5432 occupied by bungewatch-postgres-1
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./database/queries.sql:/docker-entrypoint-initdb.d/init.sql
@@ -67,9 +69,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---------------------------------------------------------------------------
-  # Airflow metadata database (separate from the app DB for clean isolation)
-  # ---------------------------------------------------------------------------
+  # ── Airflow metadata database (isolated) ─────────────────────────────────────
   airflow-db:
     image: postgres:15-alpine
     container_name: airflow_db
@@ -87,46 +87,46 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---------------------------------------------------------------------------
-  # One-shot init container: migrate Airflow schema + create admin user.
-  # Runs once and exits; webserver/scheduler wait for it to complete.
-  # ---------------------------------------------------------------------------
+  # ── One-shot init: DB migration + admin user creation ─────────────────────────
+  # Airflow 3: user creation is driven by the Docker image's /entrypoint script
+  # via _AIRFLOW_DB_MIGRATE and _AIRFLOW_WWW_USER_CREATE env vars.
+  # "exec /entrypoint airflow version" hands control to /entrypoint so it can
+  # perform migration and user provisioning before running the final command.
   airflow-init:
     <<: *airflow-common
     container_name: airflow_init
     entrypoint: /bin/bash
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
     command:
       - -c
       - |
-        echo "==> Running Airflow 3 DB migration ..."
-        airflow db migrate
-        echo "==> Creating admin user ..."
-        airflow users create \
-          --username admin \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email admin@healthpredict.local \
-          --password admin
-        echo "==> Airflow initialisation complete."
+        echo "==> Writing SimpleAuthManager passwords file (admin:admin) ..."
+        python3 -c "import json; open('/opt/airflow/project/simple_auth_manager_passwords.json','w').write(json.dumps({'admin':'admin'}))"
+        echo "==> Handing off to Airflow entrypoint (DB migrate) ..."
+        exec /entrypoint airflow version
     restart: "no"
 
-  # ---------------------------------------------------------------------------
-  # Airflow webserver — UI available at http://localhost:8080
-  # Login: admin / admin
-  # ---------------------------------------------------------------------------
-  airflow-webserver:
+  # ── Airflow 3 API server — React UI + REST API at http://localhost:8080 ───────
+  # Replaces 'airflow webserver'. Health endpoint: /api/v2/monitor/health
+  # --workers 1: multi-worker uvicorn crashes on spawn in Docker due to JWT key
+  # not being inherited across spawned subprocesses; single worker is stable.
+  airflow-api-server:
     <<: *airflow-common
-    container_name: airflow_webserver
-    command: webserver
+    container_name: airflow_api_server
+    command: api-server --workers 1
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
     restart: unless-stopped
     depends_on:
       airflow-db:
@@ -134,19 +134,56 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # ---------------------------------------------------------------------------
-  # Airflow scheduler — parses DAGs and triggers task execution on schedule
-  # ---------------------------------------------------------------------------
+  # ── Airflow 3 scheduler ────────────────────────────────────────────────────────
+  # Airflow 3 scheduler has no HTTP health endpoint; use jobs check instead.
+  # timeout 30s: airflow CLI startup is slow when scikit-learn is on the path.
   airflow-scheduler:
     <<: *airflow-common
     container_name: airflow_scheduler
     command: scheduler
     healthcheck:
-      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$${HOSTNAME}"]
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--local"]
       interval: 30s
-      timeout: 10s
+      timeout: 30s
       retries: 5
-      start_period: 60s
+      start_period: 120s
+    restart: unless-stopped
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── Airflow 3 DAG processor (required separate service in Airflow 3) ───────────
+  # In Airflow 3, DAG parsing was split out of the scheduler into its own process.
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: airflow_dag_processor
+    command: dag-processor
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob", "--local"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── Airflow 3 triggerer (handles deferrable operators) ────────────────────────
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: airflow_triggerer
+    command: triggerer
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "TriggererJob", "--local"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
     restart: unless-stopped
     depends_on:
       airflow-db:
