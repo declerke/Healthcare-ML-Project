@@ -57,6 +57,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 - **Baseline (random 3-class):** 33.3% — both models exceed the baseline
 - **Model artifact size:** 5.1 MB (joblib compress=3; RF n=50 trees, max_depth=15 — constrained to stay within GitHub's 100 MB file limit)
 - **Test suite:** 23/23 tests passing (14 API integration + 9 unit tests)
+- **Airflow DAG runtime:** 24s total — `load_data` 2s · `train_model` 19s · `validate_artifacts` 2s (validated end-to-end)
 - **Retraining schedule:** Every Saturday 12:00 UTC — automated, zero-touch
 - **API response time:** < 50ms per prediction (model held in-memory)
 - **Database tables:** `patients` (54,966 rows) · `predictions` (logs every API call) · `model_versions` (retraining audit trail)
@@ -278,7 +279,7 @@ This starts seven containers:
 | `airflow_dag_processor`  | Parses DAG files (mandatory separate service in Airflow 3)  | —     |
 | `airflow_triggerer`      | Handles deferrable operators                                | —     |
 
-Once all containers are healthy (allow ~3–4 minutes for `scikit-learn==1.5.2 xgboost==2.1.3` install on first start):
+Once all containers are healthy (allow **10–12 minutes on first start** — `xgboost==2.1.3` pulls a 294 MB CUDA runtime as a dependency on Linux; subsequent restarts reuse the cached layer):
 
 1. Open **http://localhost:8080** — login with `admin` / `admin`
 2. Navigate to **DAGs → healthcare_retrain**
@@ -291,7 +292,7 @@ Once all containers are healthy (allow ~3–4 minutes for `scikit-learn==1.5.2 x
 
 ![Airflow DAG success](assets/airflow_dag_success.png)
 
-*All three tasks completed: `load_data` (11s) → `train_model` (29s) → `validate_artifacts` (11s) — total run time 63s. DAG state: **success**.*
+*All three tasks completed: `load_data` (2s) → `train_model` (19s) → `validate_artifacts` (2s) — total run time 24s. DAG state: **success**.*
 
 ---
 
