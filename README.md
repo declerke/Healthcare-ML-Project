@@ -276,6 +276,12 @@ Once all containers are healthy (allow ~2–3 minutes for `scikit-learn==1.5.2` 
 
 > **Note:** The DAG is also scheduled for `0 12 * * 6` (Saturday 12:00 UTC) — identical to the GitHub Actions cron — so both orchestrators run the same retraining logic independently.
 
+### Airflow DAG — Successful Pipeline Run
+
+![Airflow DAG success](assets/airflow_dag_success.png)
+
+*All three tasks completed: `load_data` (11s) → `train_model` (29s) → `validate_artifacts` (11s) — total run time 63s. DAG state: **success**.*
+
 ---
 
 ## 🎓 Skills Demonstrated
