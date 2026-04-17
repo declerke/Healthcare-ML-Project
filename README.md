@@ -72,7 +72,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 
 ![Healthcare Test Result Predictor](assets/prediction_result.png)
 
-*Patient data submitted: Age 22 · Male · O+ · Elective admission · Billing $5,000 · Blue Cross · Obesity · Lipitor — predicted **Normal** with 37.5% confidence across a balanced 3-class output.*
+*Patient data submitted: Age 56 · Female · AB− · Emergency admission · Billing $5,600.70 · UnitedHealthcare · Hypertension · Paracetamol — predicted **Normal** with 37.0% confidence (Abnormal 29.5% · Inconclusive 33.5%).*
 
 ---
 
@@ -174,7 +174,8 @@ healthcare-ml-project/
 ├── render.yaml                   # Render service + database IaC
 ├── runtime.txt                   # Pins Python 3.11.9 for Render build
 ├── pyproject.toml                # UV project manifest (PEP 621)
-├── requirements.txt              # UV-generated pinned deps for Render + CI
+├── requirements.txt              # Inference-only pinned deps (Render)
+├── requirements-train.txt        # Training deps: xgboost, kaggle, pytest (GitHub Actions + local)
 ├── .env.example                  # Required environment variables
 └── .gitignore
 ```
@@ -187,8 +188,8 @@ healthcare-ml-project/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/declerke/Healthcare-ML-Project.git
-   cd Healthcare-ML-Project
+   git clone https://github.com/declerke/HealthCare-ML-Project.git
+   cd HealthCare-ML-Project
    ```
 
 2. **Install UV (package manager)**
