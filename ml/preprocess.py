@@ -79,7 +79,18 @@ def encode_features(
     return X, y
 
 
+_NORMALISE = {
+    "blood_type":        {"AB+": "Ab+", "AB-": "Ab-"},
+    "insurance_provider": {"UnitedHealthcare": "Unitedhealthcare"},
+}
+
+
 def encode_single_row(row: dict, label_encoders: dict, scaler: StandardScaler) -> np.ndarray:
+    row = dict(row)
+    for field, mapping in _NORMALISE.items():
+        if field in row and row[field] in mapping:
+            row[field] = mapping[row[field]]
+
     df = pd.DataFrame([row])
     df.columns = [c.lower().replace(" ", "_") for c in df.columns]
 
