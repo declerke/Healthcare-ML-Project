@@ -338,6 +338,35 @@
   <script>
     const API_BASE = window.location.origin;
 
+    async function callPredict(payload, attempt = 1) {
+      const MAX_ATTEMPTS = 8;
+      const RETRY_DELAY_MS = 5000;
+
+      const res = await fetch(`${API_BASE}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const contentType = res.headers.get("content-type") || "";
+      const isColdStart = !contentType.includes("application/json");
+
+      if (isColdStart) {
+        if (attempt >= MAX_ATTEMPTS) throw new Error("cold-start-timeout");
+        const secsLeft = Math.round(((MAX_ATTEMPTS - attempt) * RETRY_DELAY_MS) / 1000);
+        showError(`Service is warming up — retrying automatically (${secsLeft}s remaining)…`);
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        return callPredict(payload, attempt + 1);
+      }
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || `Server error ${res.status}`);
+      }
+
+      return res.json();
+    }
+
     document.getElementById("predict-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       hideError();
@@ -359,31 +388,14 @@
       };
 
       try {
-        const res = await fetch(`${API_BASE}/predict`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        // Render free-tier cold-start returns an HTML splash page, not JSON.
-        // Detect it before trying to parse so the user gets a helpful message.
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          showError("Service is warming up — please wait ~30 seconds and try again.");
-          return;
-        }
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || `Server error ${res.status}`);
-        }
-
-        const data = await res.json();
+        const data = await callPredict(payload);
+        hideError();
         showResult(data);
       } catch (err) {
-        // SyntaxError means JSON.parse failed — almost certainly a cold-start HTML page.
-        if (err instanceof SyntaxError) {
-          showError("Service is warming up — please wait ~30 seconds and try again.");
+        if (err.message === "cold-start-timeout") {
+          showError("Service took too long to wake up. Please try again in a moment.");
+        } else if (err instanceof SyntaxError) {
+          showError("Service is warming up — please refresh and try again.");
         } else {
           showError(err.message);
         }
